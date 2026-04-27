@@ -42,19 +42,18 @@ GEMINI_MODEL = "gemini-1.5-flash"
 
 
 def get_available_crops():
-    # If Gemini is configured, we can support all UI crops without local checkpoints.
-    gemini_api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if gemini_api_key:
-        return sorted(set(DEFAULT_CROPS))
-
-    if not MODELS_DIR.exists() or not MODELS_DIR.is_dir():
-        return []
-
+    # If we have local models, use them
     crops = []
-    for model_file in MODELS_DIR.glob("*_model.pth"):
-        name = model_file.name
-        if name.endswith("_model.pth"):
-            crops.append(name[:-10])
+    if MODELS_DIR.exists() and MODELS_DIR.is_dir():
+        for model_file in MODELS_DIR.glob("*_model.pth"):
+            name = model_file.name
+            if name.endswith("_model.pth"):
+                crops.append(name[:-10])
+    
+    # If no local models (common in hosting), return all supported crops for Gemini
+    if not crops:
+        return sorted(set(DEFAULT_CROPS))
+        
     return sorted(set(crops))
 
 
@@ -584,6 +583,7 @@ async def get_mail(request: Request, email: str):
 
 
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)), reload=True)
 
 # or write "uvicorn main:app --reload" in terminal to run the app
