@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- Hero Header -->
+<section class="page-hero">
+    <h1 class="page-title">Nutrient Analyzer</h1>
+    <p class="page-subtitle">Scientific soil analysis for optimal plant health. Enter your lab results to receive a customized protocol.</p>
+</section>
+
+<!-- Main Content -->
+<section class="content-section">
+    <div class="glass-card">
+        <form action="/analyze-nutrients" method="post">
+            <h3 style="margin-top: 0; color: var(--green-dark); text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.1em; margin-bottom: 30px;">Sample Identity</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Plant Species</label>
+                    <input type="text" name="plant_name" placeholder="e.g. Tomato" required>
+                </div>
+                <div class="form-group">
+                    <label>Growth Stage</label>
+                    <select name="growth_stage" required>
+                        <option value="seedling">Seedling</option>
+                        <option value="vegetative">Vegetative</option>
+                        <option value="flowering">Flowering</option>
+                        <option value="fruiting">Fruiting</option>
+                    </select>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 50px; color: var(--green-dark); text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.1em; margin-bottom: 30px;">Laboratory Results (ppm)</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Nitrogen (N)</label>
+                    <input type="number" name="nutrient_n" value="440" required>
+                </div>
+                <div class="form-group">
+                    <label>Phosphorus (P)</label>
+                    <input type="number" name="nutrient_p" value="60" required>
+                </div>
+                <div class="form-group">
+                    <label>Potassium (K)</label>
+                    <input type="number" name="nutrient_k" value="50" required>
+                </div>
+                <div class="form-group">
+                    <label>Calcium (Ca)</label>
+                    <input type="number" name="nutrient_ca" value="80" required>
+                </div>
+                <div class="form-group">
+                    <label>Magnesium (Mg)</label>
+                    <input type="number" name="nutrient_mg" value="60" required>
+                </div>
+                <div class="form-group">
+                    <label>Sulfur (S)</label>
+                    <input type="number" name="nutrient_s" value="60" required>
+                </div>
+                <div class="form-group">
+                    <label>Soil pH</label>
+                    <input type="number" step="0.1" name="soil_ph" value="7.0" required>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-action">Execute Laboratory Analysis</button>
+        </form>
+
+        {% if result %}
+        <div class="result-container">
+            <h3 style="margin-top: 0; color: var(--green-dark); text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.1em; margin-bottom: 30px;">Analysis Report</h3>
+            <p style="margin-bottom: 30px; font-weight: 700; color: var(--green-dark);">Sample: {{ result.plant_name }} &bull; Stage: {{ result.growth_stage }}</p>
+            
+            <div style="overflow-x: auto;">
+                <table class="styled-table">
+                    <thead>
+                        <tr>
+                            <th>Nutrient</th>
+                            <th>Measured Value</th>
+                            <th>Reference Range</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for nutrient, value in result.nutrients.items() %}
+                        <tr>
+                            <td>{{ nutrient }}</td>
+                            <td>{{ value[0] }} ppm</td>
+                            <td>{{ value[1] }} ppm</td>
+                            <td>
+                                {% set minv = value[1].split(' - ')[0]|float %}
+                                {% set maxv = value[1].split(' - ')[1]|float %}
+                                <span style="font-weight: 800; font-size: 0.75rem; letter-spacing: 0.05em;">
+                                {% if minv > value[0]|float %}
+                                    <span style="color: #D94A3A;">CRITICAL LOW</span>
+                                {% elif maxv < value[0]|float %}
+                                    <span style="color: #A65B45;">HIGH</span>
+                                {% else %}
+                                    <span style="color: #143F24;">OPTIMAL</span>
+                                {% endif %}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="margin-top: 40px; padding: 30px; background: var(--white); border-radius: 16px; border-left: 6px solid var(--green-dark);">
+                <h4 style="margin: 0 0 10px 0; font-family: 'Space Grotesk', sans-serif; font-size: 1.2rem;">Expert Recommendations</h4>
+                <p style="margin: 0; line-height: 1.6; font-weight: 500; color: var(--green-mid);">{{ result.recommendations }}</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+{% endblock %}

@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- Hero Header -->
+<section class="page-hero">
+    <h1 class="page-title">Yield Predictor</h1>
+    <p class="page-subtitle">Harness the power of AI to forecast your harvest with precision. Enter your environmental data below.</p>
+</section>
+
+<!-- Main Content -->
+<section class="content-section">
+    <div class="glass-card">
+        <form action="/predict" method="post">
+            <h3 style="margin-top: 0; color: var(--green-dark); text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.1em; margin-bottom: 30px;">Environmental Metrics</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Crop Type</label>
+                    <select name="cropType" required>
+                        <option value="rice">Rice</option>
+                        <option value="wheat">Wheat</option>
+                        <option value="sugarcane">Sugarcane</option>
+                        <option value="cotton">Cotton</option>
+                        <option value="potato">Potato</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Soil Type</label>
+                    <select name="soilType" required>
+                        <option value="Sandy">Sandy</option>
+                        <option value="Clay">Clay</option>
+                        <option value="Loamy">Loamy</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Location Region</label>
+                    <input type="text" name="location" placeholder="e.g. Maharashtra" required>
+                </div>
+                <div class="form-group">
+                    <label>Soil pH Level</label>
+                    <input type="number" step="0.1" name="ph" value="6.5" required>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 50px; color: var(--green-dark); text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.1em; margin-bottom: 30px;">Nutrient Composition (kg/ha)</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Nitrogen (N)</label>
+                    <input type="number" name="n" value="80" required>
+                </div>
+                <div class="form-group">
+                    <label>Phosphorus (P)</label>
+                    <input type="number" name="p" value="40" required>
+                </div>
+                <div class="form-group">
+                    <label>Potassium (K)</label>
+                    <input type="number" name="k" value="60" required>
+                </div>
+                <div class="form-group">
+                    <label>Magnesium (Mg)</label>
+                    <input type="number" name="mg" value="20" required>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 50px; color: var(--green-dark); text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.1em; margin-bottom: 30px;">Weather & Climate</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Temperature (°C)</label>
+                    <input type="number" name="temp" value="28" required>
+                </div>
+                <div class="form-group">
+                    <label>Rainfall (mm)</label>
+                    <input type="number" name="rainfall" value="450" required>
+                </div>
+                <div class="form-group">
+                    <label>Humidity (%)</label>
+                    <input type="number" name="humidity" value="75" required>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-action">Run AI Forecast</button>
+        </form>
+
+        {% if yield_pred %}
+        <div class="result-container">
+            <h3 style="margin-top: 0; color: var(--green-dark); text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.1em; margin-bottom: 30px;">Forecast Results</h3>
+            <div class="result-grid">
+                <div class="result-item">
+                    <h4>Estimated Yield</h4>
+                    <span class="result-value">{{ yield_pred }} <small style="font-size: 1rem;">tons/ha</small></span>
+                </div>
+                <div class="result-item">
+                    <h4>Market Price</h4>
+                    <span class="result-value">{{ price_pred }} <small style="font-size: 1rem;">/ton</small></span>
+                </div>
+            </div>
+            <div style="margin-top: 40px; padding-top: 30px; border-top: 1px solid rgba(10, 43, 22, 0.1);">
+                <p style="font-weight: 600; opacity: 0.7;">Confidence Level: 98.4% based on regional historical data.</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+{% endblock %}

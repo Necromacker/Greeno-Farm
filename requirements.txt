@@ -1,0 +1,11 @@
+torch
+torchvision
+timm
+fastapi
+uvicorn
+jinja2
+python-multipart
+numpy
+Pillow
+tqdm
+git+https://github.com/jacobgil/pytorch-grad-cam.git
