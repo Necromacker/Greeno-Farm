@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import gc
 from pathlib import Path
 from urllib import request as urlrequest
 from urllib import error as urlerror
@@ -281,7 +282,14 @@ def load_model(crop_type: str):
     import torch
     import timm
     crop_type = crop_type.lower()
-    if crop_type in loaded_models:
+    
+    # Clear other models to save memory - ensure only one model is in RAM at a time
+    if crop_type not in loaded_models:
+        loaded_models.clear()
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    else:
         return loaded_models[crop_type]
 
     model_path = MODELS_DIR / f"{crop_type}_model.pth"
@@ -463,68 +471,36 @@ def deficiency_page(request: Request):
 async def analyze_image(request: Request, file: UploadFile = File(...), crop_type: str = Form(...)):
     try:
         available_crops = get_available_crops()
-        if crop_type.lower() not in available_crops:
-            if not available_crops:
-                raise FileNotFoundError(
-                    "No crop models are installed. Add trained model files to the models directory."
-                )
-            raise FileNotFoundError(
-                f"Model for '{crop_type}' is unavailable. Available crops: {', '.join(available_crops)}"
-            )
-
         contents = await file.read()
+        
+        # Optimization: Process image only once and resize early
         img_pil = Image.open(io.BytesIO(contents)).convert("RGB")
         original_b64 = pil_to_base64(img_pil.resize((IMG_SIZE, IMG_SIZE)))
 
-        # Generate Grad-CAM image using local model if available
-        gradcam_b64 = None
-        local_pred_class = None
-        model_note = ""
-        is_placeholder = False
+        # --- 1. Try Gemini API First (Memory Efficient) ---
+        gemini_result = None
+        gemini_warning = ""
+        
         try:
-            import torch
-            from pytorch_grad_cam import GradCAM
-            from pytorch_grad_cam.utils.image import show_cam_on_image
-            from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
-            
-            model, class_names, is_placeholder, model_note = load_model(crop_type)
-            device = get_device()
-            transform = get_transform()
-            input_tensor = transform(img_pil).unsqueeze(0).to(device)
-            with torch.no_grad():
-                outputs = model(input_tensor)
-                probs = torch.nn.functional.softmax(outputs, dim=1)[0]
-                pred_idx = probs.argmax().item()
-                local_pred_class = class_names[pred_idx]
-
-            # --- Grad-CAM Visualization ---
-            target_layers = [model.conv_head]
-            cam = GradCAM(model=model, target_layers=target_layers)
-            grayscale_cam = cam(input_tensor=input_tensor, targets=[ClassifierOutputTarget(pred_idx)])[0, :]
-            rgb_img = np.array(img_pil.resize((IMG_SIZE, IMG_SIZE))) / 255.0
-            visualization = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
-            visualization_uint8 = (visualization * 255).astype(np.uint8)
-            gradcam_b64 = pil_to_base64(Image.fromarray(visualization_uint8))
-        except Exception:
-            pass
-
-        # Prefer Gemini API when key is configured. Fall back to local model on failure.
-        try:
-            gemini_result = analyze_with_gemini(contents, crop_type)
-        except Exception as gemini_error:
-            gemini_result = None
-            gemini_warning = f"Gemini unavailable, used local model instead: {gemini_error}"
-        else:
-            gemini_warning = ""
+            # Only call Gemini if API key exists
+            if os.environ.get("GEMINI_API_KEY"):
+                gemini_result = analyze_with_gemini(contents, crop_type)
+        except Exception as e:
+            gemini_warning = f"Gemini API error: {str(e)}"
 
         if gemini_result:
+            # Clear any models if they were loaded to free memory
+            if loaded_models:
+                loaded_models.clear()
+                gc.collect()
+                
             result = {
                 "predictedDeficiency": gemini_result["predictedDeficiency"],
                 "summary": gemini_result["summary"],
                 "treatment": gemini_result.get("treatment", "No specific treatment protocol provided."),
                 "model_warning": "Prediction source: Gemini API vision analysis.",
                 "uploaded_image": original_b64,
-                "gradcam_image": gradcam_b64,
+                "gradcam_image": None, # Skip Grad-CAM for Gemini to save memory
                 "fixBudget": gemini_result.get("fixBudget", "₹1200"),
                 "fixYield": gemini_result.get("fixYield", "6.2 tons/ha"),
                 "fixPrice": gemini_result.get("fixPrice", "₹1780 per ton"),
@@ -537,18 +513,55 @@ async def analyze_image(request: Request, file: UploadFile = File(...), crop_typ
                 context={"result": result, "available_crops": available_crops},
             )
 
+        # --- 2. Fallback to Local Model if Gemini Fails or is Missing ---
+        if crop_type.lower() not in available_crops:
+            raise FileNotFoundError(f"Model for '{crop_type}' is unavailable and Gemini failed.")
+
+        gradcam_b64 = None
+        local_pred_class = None
+        model_note = ""
+        is_placeholder = False
+        
+        try:
+            import torch
+            from pytorch_grad_cam import GradCAM
+            from pytorch_grad_cam.utils.image import show_cam_on_image
+            from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+            
+            model, class_names, is_placeholder, model_note = load_model(crop_type)
+            device = get_device()
+            transform = get_transform()
+            
+            input_tensor = transform(img_pil).unsqueeze(0).to(device)
+            with torch.no_grad():
+                outputs = model(input_tensor)
+                probs = torch.nn.functional.softmax(outputs, dim=1)[0]
+                pred_idx = probs.argmax().item()
+                local_pred_class = class_names[pred_idx]
+
+            # Only generate Grad-CAM if explicitly requested or local model is used
+            target_layers = [model.conv_head]
+            cam = GradCAM(model=model, target_layers=target_layers)
+            grayscale_cam = cam(input_tensor=input_tensor, targets=[ClassifierOutputTarget(pred_idx)])[0, :]
+            rgb_img = np.array(img_pil.resize((IMG_SIZE, IMG_SIZE))) / 255.0
+            visualization = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+            visualization_uint8 = (visualization * 255).astype(np.uint8)
+            gradcam_b64 = pil_to_base64(Image.fromarray(visualization_uint8))
+            
+            # Cleanup local torch objects
+            del input_tensor, outputs, probs, cam
+            gc.collect()
+        except Exception as e:
+            print(f"Local model error: {e}")
+
         if not local_pred_class:
-            raise RuntimeError("Gemini failed and local model is unavailable for this crop.")
+            raise RuntimeError(f"Analysis failed. {gemini_warning or 'Local model failed.'}")
 
         result = {
             "predictedDeficiency": local_pred_class,
-            "summary": "This analysis was performed using a local pre-trained model. For a more detailed agronomic assessment and customized treatment protocol, please ensure the Gemini API is correctly configured.",
-            "treatment": "1. Verify nutrient levels through soil testing.\n2. Consult with a local agronomist.\n3. Apply balanced NPK fertilizers if symptoms persist.",
-            "model_warning": (
-                gemini_warning if gemini_warning else model_note
-                if is_placeholder
-                else ""
-            ),
+            "summary": "Local analysis performed. For more detailed insights, configure Gemini API.",
+            "treatment": "1. Verify nutrient levels.\n2. Consult agronomist.\n3. Apply balanced NPK.",
+            "model_warning": gemini_warning or model_note if is_placeholder else "",
             "uploaded_image": original_b64,
             "gradcam_image": gradcam_b64,
             "fixBudget": "₹1200",
