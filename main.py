@@ -316,12 +316,12 @@ def pil_to_base64(img: Image.Image):
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="index.html")
 
 
 @app.get("/yield", response_class=HTMLResponse)
 def yield_page(request: Request):
-    return templates.TemplateResponse("yield.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="yield.html")
 
 
 @app.post("/predict", response_class=HTMLResponse)
@@ -352,9 +352,9 @@ async def predict_yield(
             print(f"Warning: Gemini yield prediction failed. Error: {e}")
 
         return templates.TemplateResponse(
-            "yield.html",
-            {
-                "request": request,
+            request=request,
+            name="yield.html",
+            context={
                 "cropType": cropType,
                 "soilType": soilType,
                 "location": location,
@@ -363,12 +363,12 @@ async def predict_yield(
             },
         )
     except Exception as e:
-        return templates.TemplateResponse("error.html", {"request": request, "error": str(e)})
+        return templates.TemplateResponse(request=request, name="error.html", context={"error": str(e)})
 
 
 @app.get("/nutrient", response_class=HTMLResponse)
 def nutrient_page(request: Request):
-    return templates.TemplateResponse("nutrient.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="nutrient.html")
 
 
 @app.post("/analyze-nutrients", response_class=HTMLResponse)
@@ -445,17 +445,18 @@ async def analyze_nutrients(request: Request):
             print(f"Warning: Gemini nutrient analysis failed. Error: {e}")
 
         return templates.TemplateResponse(
-            "nutrient.html", {"request": request, "result": result}
+            request=request, name="nutrient.html", context={"result": result}
         )
     except Exception as e:
-        return templates.TemplateResponse("error.html", {"request": request, "error": str(e)})
+        return templates.TemplateResponse(request=request, name="error.html", context={"error": str(e)})
 
 
 @app.get("/deficiency", response_class=HTMLResponse)
 def deficiency_page(request: Request):
     return templates.TemplateResponse(
-        "deficiency.html",
-        {"request": request, "available_crops": get_available_crops()},
+        request=request,
+        name="deficiency.html",
+        context={"available_crops": get_available_crops()},
     )
 
 
@@ -532,8 +533,9 @@ async def analyze_image(request: Request, file: UploadFile = File(...), crop_typ
                 "continuePrice": gemini_result.get("continuePrice", "₹1530 per ton")
             }
             return templates.TemplateResponse(
-                "deficiency.html",
-                {"request": request, "result": result, "available_crops": available_crops},
+                request=request,
+                name="deficiency.html",
+                context={"result": result, "available_crops": available_crops},
             )
 
         if not local_pred_class:
@@ -558,14 +560,14 @@ async def analyze_image(request: Request, file: UploadFile = File(...), crop_typ
         }
 
         return templates.TemplateResponse(
-            "deficiency.html", {"request": request, "result": result, "available_crops": available_crops}
+            request=request, name="deficiency.html", context={"result": result, "available_crops": available_crops}
         )
 
     except Exception as e:
         return templates.TemplateResponse(
-            "deficiency.html",
-            {
-                "request": request,
+            request=request,
+            name="deficiency.html",
+            context={
                 "error": str(e),
                 "available_crops": get_available_crops(),
             },
@@ -577,7 +579,7 @@ async def get_mail(request: Request, email: str):
     message = f"Thank you, {email}! 🌿 You're now subscribed to AgriAI's Smart Farming Newsletter."
     
     return templates.TemplateResponse(
-        "newsletter.html", {"request": request, "message": message}
+        request=request, name="newsletter.html", context={"message": message}
     )
 
 
