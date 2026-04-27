@@ -4,35 +4,33 @@ import json
 from pathlib import Path
 from urllib import request as urlrequest
 from urllib import error as urlerror
-import torch
-import timm
 import numpy as np
-import uvicorn
 import base64
 from io import BytesIO
 from datetime import date
 from PIL import Image
-from torchvision import transforms
 from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pytorch_grad_cam import GradCAM
-from pytorch_grad_cam.utils.image import show_cam_on_image
-from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
 app = FastAPI(title="AI - Smart Farm Analyzer")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 IMG_SIZE = 224
 
-transform = transforms.Compose([
-    transforms.Resize((IMG_SIZE, IMG_SIZE)),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+def get_transform():
+    from torchvision import transforms
+    return transforms.Compose([
+        transforms.Resize((IMG_SIZE, IMG_SIZE)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+
+def get_device():
+    import torch
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 loaded_models = {}
@@ -40,6 +38,7 @@ MODELS_DIR = Path("models")
 DEFAULT_CROPS = ["rice", "wheat", "sugarcane", "cotton", "potato", "tomato", "corn", "citrus", "grape", "apple"]
 # API Configuration (Set these in your hosting environment variables)
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = "gemini-1.5-flash"
 
 
 def get_available_crops():
@@ -280,6 +279,8 @@ def get_nutrient_analysis_gemini(plant_name, growth_stage, soil_ph, n, p, k, ca,
 
 
 def load_model(crop_type: str):
+    import torch
+    import timm
     crop_type = crop_type.lower()
     if crop_type in loaded_models:
         return loaded_models[crop_type]
@@ -288,7 +289,8 @@ def load_model(crop_type: str):
     if not model_path.exists():
         raise FileNotFoundError(f"No model found for crop: {crop_type}")
 
-    checkpoint = torch.load(model_path, map_location=DEVICE)
+    device = get_device()
+    checkpoint = torch.load(model_path, map_location=device)
     class_names = checkpoint["class_names"]
     num_classes = len(class_names)
     is_placeholder = bool(checkpoint.get("is_placeholder", False))
@@ -300,7 +302,7 @@ def load_model(crop_type: str):
         torch.nn.Linear(model.classifier.in_features, num_classes)
     )
     model.load_state_dict(checkpoint["model_state_dict"], strict=False)
-    model.to(DEVICE).eval()
+    model.to(device).eval()
 
     loaded_models[crop_type] = (model, class_names, is_placeholder, model_note)
     return model, class_names, is_placeholder, model_note
@@ -480,8 +482,15 @@ async def analyze_image(request: Request, file: UploadFile = File(...), crop_typ
         model_note = ""
         is_placeholder = False
         try:
+            import torch
+            from pytorch_grad_cam import GradCAM
+            from pytorch_grad_cam.utils.image import show_cam_on_image
+            from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+            
             model, class_names, is_placeholder, model_note = load_model(crop_type)
-            input_tensor = transform(img_pil).unsqueeze(0).to(DEVICE)
+            device = get_device()
+            transform = get_transform()
+            input_tensor = transform(img_pil).unsqueeze(0).to(device)
             with torch.no_grad():
                 outputs = model(input_tensor)
                 probs = torch.nn.functional.softmax(outputs, dim=1)[0]
